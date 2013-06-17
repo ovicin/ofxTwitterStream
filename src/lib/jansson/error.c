@@ -18,10 +18,12 @@ void jsonp_error_init(json_error_t *error, const char *source)
 
 void jsonp_error_set_source(json_error_t *error, const char *source)
 {
+    size_t length;
+
     if(!error || !source)
         return;
 
-    size_t length = strlen(source);
+    length = strlen(source);
     if(length < JSON_ERROR_SOURCE_LENGTH)
         strcpy(error->source, source);
     else {
@@ -57,4 +59,5 @@ void jsonp_error_vset(json_error_t *error, int line, int column,
     error->position = position;
 
     vsnprintf(error->text, JSON_ERROR_TEXT_LENGTH, msg, ap);
+    error->text[JSON_ERROR_TEXT_LENGTH - 1] = '\0';
 }

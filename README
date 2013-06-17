@@ -13,3 +13,13 @@ How to install - only tested on Mac, XCode 4, with latest of-git version (may 20
 2) draw and drop the "src" directory into this group
 
 That's it!
+
+========================================
+ovicin
+
+fork from: https://github.com/roxlu/ofxTwitterStream
+
+uses: https://github.com/arturoc/ofxHttpUtils
+
+- updates made to compile in VS2010
+- VS2010 example added

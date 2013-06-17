@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2011 Petri Lehtinen <petri@digip.org>
+ * Copyright (c) 2009-2012 Petri Lehtinen <petri@digip.org>
  *
  * Jansson is free software; you can redistribute it and/or modify
  * it under the terms of the MIT license. See LICENSE for details.
@@ -12,7 +12,7 @@
 #include <stdlib.h>  /* for size_t */
 #include <stdarg.h>
 
-#include "jansson_config.h" // removed <> with "" (diederick, 2011)
+#include <jansson_config.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,17 +21,17 @@ extern "C" {
 /* version */
 
 #define JANSSON_MAJOR_VERSION  2
-#define JANSSON_MINOR_VERSION  0
-#define JANSSON_MICRO_VERSION  0
+#define JANSSON_MINOR_VERSION  4
+#define JANSSON_MICRO_VERSION  99
 
 /* Micro version is omitted if it's 0 */
-#define JANSSON_VERSION  "2.0"
+#define JANSSON_VERSION  "2.5-dev"
 
 /* Version as a 3-byte hex number, e.g. 0x010201 == 1.2.1. Use this
    for numeric comparisons, e.g. #if JANSSON_VERSION_HEX >= ... */
 #define JANSSON_VERSION_HEX  ((JANSSON_MAJOR_VERSION << 16) |   \
                               (JANSSON_MINOR_VERSION << 8)  |   \
-                              (JANSSON_MICRO_VERSION << 0)))
+                              (JANSSON_MICRO_VERSION << 0))
 
 
 /* types */
@@ -47,18 +47,24 @@ typedef enum {
     JSON_NULL
 } json_type;
 
-typedef struct {
+typedef struct json_t {
     json_type type;
     size_t refcount;
 } json_t;
 
+#ifndef JANSSON_USING_CMAKE /* disabled if using cmake */
 #if JSON_INTEGER_IS_LONG_LONG
+#ifdef _WIN32
+#define JSON_INTEGER_FORMAT "I64d"
+#else
 #define JSON_INTEGER_FORMAT "lld"
+#endif
 typedef long long json_int_t;
 #else
 #define JSON_INTEGER_FORMAT "ld"
 typedef long json_int_t;
 #endif /* JSON_INTEGER_IS_LONG_LONG */
+#endif
 
 #define json_typeof(json)      ((json)->type)
 #define json_is_object(json)   (json && json_typeof(json) == JSON_OBJECT)
@@ -82,6 +88,7 @@ json_t *json_integer(json_int_t value);
 json_t *json_real(double value);
 json_t *json_true(void);
 json_t *json_false(void);
+#define json_boolean(val)      ((val) ? json_true() : json_false())
 json_t *json_null(void);
 
 static JSON_INLINE
@@ -126,12 +133,25 @@ int json_object_set_new_nocheck(json_t *object, const char *key, json_t *value);
 int json_object_del(json_t *object, const char *key);
 int json_object_clear(json_t *object);
 int json_object_update(json_t *object, json_t *other);
+int json_object_update_existing(json_t *object, json_t *other);
+int json_object_update_missing(json_t *object, json_t *other);
 void *json_object_iter(json_t *object);
 void *json_object_iter_at(json_t *object, const char *key);
+void *json_object_key_to_iter(const char *key);
 void *json_object_iter_next(json_t *object, void *iter);
 const char *json_object_iter_key(void *iter);
 json_t *json_object_iter_value(void *iter);
 int json_object_iter_set_new(json_t *object, void *iter, json_t *value);
+
+#define json_object_foreach(object, key, value) \
+    for(key = json_object_iter_key(json_object_iter(object)); \
+        key && (value = json_object_iter_value(json_object_key_to_iter(key))); \
+        key = json_object_iter_key(json_object_iter_next(object, json_object_key_to_iter(key))))
+
+#define json_array_foreach(array, index, value) \
+	for(index = 0; \
+		index < json_array_size(array) && (value = json_array_get(array, index)); \
+		index++)
 
 static JSON_INLINE
 int json_object_set(json_t *object, const char *key, json_t *value)
@@ -161,9 +181,9 @@ int json_array_clear(json_t *array);
 int json_array_extend(json_t *array, json_t *other);
 
 static JSON_INLINE
-int json_array_set(json_t *array, size_t index, json_t *value)
+int json_array_set(json_t *array, size_t ind, json_t *value)
 {
-    return json_array_set_new(array, index, json_incref(value));
+    return json_array_set_new(array, ind, json_incref(value));
 }
 
 static JSON_INLINE
@@ -173,9 +193,9 @@ int json_array_append(json_t *array, json_t *value)
 }
 
 static JSON_INLINE
-int json_array_insert(json_t *array, size_t index, json_t *value)
+int json_array_insert(json_t *array, size_t ind, json_t *value)
 {
-    return json_array_insert_new(array, index, json_incref(value));
+    return json_array_insert_new(array, ind, json_incref(value));
 }
 
 const char *json_string_value(const json_t *string);
@@ -214,22 +234,38 @@ json_t *json_copy(json_t *value);
 json_t *json_deep_copy(json_t *value);
 
 
-/* loading, printing */
+/* decoding */
+
+#define JSON_REJECT_DUPLICATES  0x1
+#define JSON_DISABLE_EOF_CHECK  0x2
+#define JSON_DECODE_ANY         0x4
+#define JSON_DECODE_INT_AS_REAL 0x8
+
+typedef size_t (*json_load_callback_t)(void *buffer, size_t buflen, void *data);
 
 json_t *json_loads(const char *input, size_t flags, json_error_t *error);
+json_t *json_loadb(const char *buffer, size_t buflen, size_t flags, json_error_t *error);
 json_t *json_loadf(FILE *input, size_t flags, json_error_t *error);
 json_t *json_load_file(const char *path, size_t flags, json_error_t *error);
+json_t *json_load_callback(json_load_callback_t callback, void *data, size_t flags, json_error_t *error);
+
+
+/* encoding */
 
 #define JSON_INDENT(n)      (n & 0x1F)
 #define JSON_COMPACT        0x20
 #define JSON_ENSURE_ASCII   0x40
 #define JSON_SORT_KEYS      0x80
 #define JSON_PRESERVE_ORDER 0x100
+#define JSON_ENCODE_ANY     0x200
+#define JSON_ESCAPE_SLASH   0x400
+
+typedef int (*json_dump_callback_t)(const char *buffer, size_t size, void *data);
 
 char *json_dumps(const json_t *json, size_t flags);
 int json_dumpf(const json_t *json, FILE *output, size_t flags);
 int json_dump_file(const json_t *json, const char *path, size_t flags);
-
+int json_dump_callback(const json_t *json, json_dump_callback_t callback, void *data, size_t flags);
 
 /* custom memory allocation */
 
